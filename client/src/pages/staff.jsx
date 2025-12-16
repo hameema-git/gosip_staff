@@ -158,44 +158,46 @@ export default function StaffDashboard() {
   }, []);
 
   // --- Load sessions and set default (active / latest)
-async function loadSessions() {
-  try {
-    // 1️⃣ Read all token sessions
-    const tokensSnap = await getDocs(collection(db, "tokens"));
-    const list = tokensSnap.docs
-      .map(d => d.id.replace("session_", ""))
-      .filter(Boolean)
-      .sort((a, b) => {
-        const na = Number(a.split(" ")[1]) || 0;
-        const nb = Number(b.split(" ")[1]) || 0;
+  async function loadSessions() {
+    try {
+      // get activeSession setting first
+      const settingsRef = doc(db, "settings", "activeSession");
+      const settingsSnap = await getDocs(collection(db, "tokens")); // get tokens to build session list
+      const tokenDocs = settingsSnap.docs;
+      const list = tokenDocs.map((d) => d.id.replace("session_", "")).filter(Boolean);
+      // sort by numeric suffix (Session 1, Session 2 ...)
+      list.sort((a, b) => {
+        const na = Number((a || "").split(" ")[1]) || 0;
+        const nb = Number((b || "").split(" ")[1]) || 0;
         return na - nb;
       });
+      setSessions(list);
 
-    setSessions(list);
+      // try activeSession doc
+      const activeSnap = await (async () => {
+        try {
+          const s = await (await import("firebase/firestore")).getDoc(settingsRef);
+          return s;
+        } catch {
+          return null;
+        }
+      })();
 
-    // 2️⃣ Read active session from settings
-    const activeSnap = await getDoc(doc(db, "settings", "activeSession"));
-
-    let activeSession = null;
-    if (activeSnap.exists()) {
-      activeSession = activeSnap.data().session_id;
+      let active = null;
+      if (activeSnap && activeSnap.exists()) {
+        active = activeSnap.data().session_id;
+      }
+      // if no active in settings, pick newest session in list
+      const pick = active || list[list.length - 1] || "Session 1";
+      setSession(pick);
+      setSelectedSession((prev) => prev || pick);
+    } catch (err) {
+      console.error("loadSessions", err);
+      // fallback
+      setSelectedSession((prev) => prev || "Session 1");
     }
-
-    // 3️⃣ Decide final session
-    const finalSession =
-      activeSession && list.includes(activeSession)
-        ? activeSession
-        : list[0] || "Session 1";
-
-    setSession(finalSession);
-    setSelectedSession(finalSession);
-
-  } catch (err) {
-    console.error("loadSessions error", err);
-    setSession("Session 1");
-    setSelectedSession("Session 1");
   }
-}
+
 
   // useEffect(() => {
   //   const ref = doc(db, "settings", "shop");
